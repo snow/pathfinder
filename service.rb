@@ -15,7 +15,10 @@ class Server < RubyDNS::RuleBasedServer
   def initialize *ars, &block
     super
 
-    @cache = {}
+    @cache = {
+      'Resolv::DNS::Resource::IN::A' => {},
+      'Resolv::DNS::Resource::IN::AAAA' => {},
+    }
   end
 
   def respond transaction, stream
@@ -35,19 +38,23 @@ class Server < RubyDNS::RuleBasedServer
   def cache response
     response.answer.\
       select{ |name, ttl, res|
-        res.kind_of?(Resolv::DNS::Resource::IN::A) && ttl > 0
+        (res.kind_of?(Resolv::DNS::Resource::IN::A) ||
+            res.kind_of?(Resolv::DNS::Resource::IN::AAAA)) &&
+          ttl > 0
       }.\
       each { |name, ttl, res|
         # name may be diffrent from response.question when target has CNAME
         key = response.question[0][0].to_s.sub /\.$/, ''
-        @cache[key] = [res.address.to_s, Time.now.to_i + ttl]
+        @cache[res.class.name][key] = [res.address.to_s, Time.now.to_i + ttl]
         #logger.warn CACHE
         return
       }
   end
 
   def get_cached transaction
-    @cache[transaction.question.to_s.sub /\.$/, '']
+    res_class = transaction.resource_class.name
+    @cache.key?(res_class) and
+      @cache[res_class][transaction.question.to_s.sub /\.$/, '']
   end
 end
 
