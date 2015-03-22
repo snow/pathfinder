@@ -1,12 +1,3 @@
-:direct_domains:
-  - douban.com
-  - douban.fm
-  - xiami.com
-  - taobao.com
-  - alipay.com
-  - tmall.com
-  - baidu.com
-  - apple.com
 :home_resolvers:
   - 112.124.47.27 # one
   - 114.215.126.16
