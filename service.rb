@@ -27,9 +27,9 @@ class HomeResolver < RubyDNS::Resolver
     }
   end
 
-  def to_s
-    "#<#{self.class.name}: #{@servers.slice(0, 2).map{ |e| e[1] }.join ' | '}>"
-  end
+  #def to_s
+    #super.sub />$/, "[#{@servers.map{ |e| e[1] }.join(', ')}]>"
+  #end
 end
 # when computer goes sleep, Resolver actor dies for Errno::ENETDOWN
 # so use pool to auto recreate
@@ -41,9 +41,9 @@ class ProxyResolver < RubyDNS::Resolver
     super [[:udp, '127.0.0.1', 40]]
   end
 
-  def to_s
-    "#<#{self.class.name}: #{@servers.map{ |e| e[1] }.join ' | '}>"
-  end
+  #def to_s
+    #super.sub />$/, "[#{@servers.map{ |e| e[1] }.join(', ')}]>"
+  #end
 end
 PROXY_STREAM = ProxyResolver.pool
 
