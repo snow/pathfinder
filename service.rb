@@ -10,15 +10,50 @@ CONF = YAML.load_file File.expand_path '../conf.yml', __FILE__
 
 INTERFACES = [[:udp, '127.0.0.1', 5300], [:tcp, '127.0.0.1', 5300]]
 
-class CustomDnsServer < RubyDNS::RuleBasedServer
-  def deliver_to_stream transaction, stream_type
-    stream = get_stream stream_type
+HOME_DOMAINS_REGX = /#{File.readlines(
+                         File.expand_path '../home_domains.txt', __FILE__
+                       ).\
+                       select{ |e| !e.strip.start_with? '#' }.\
+                       map{ |e| e.split('#').first.strip }.\
+                       map{ |e| "^(.+\.)?#{e.gsub '.', '\.'}$" }.\
+                       join '|'}/
 
+# sub class to distinguish with ProxyResolver in log
+class HomeResolver < RubyDNS::Resolver
+  def initialize
+    super CONF[:home_resolvers].map{ |e|
+      ip = e.split('#').first.strip
+      [:udp, ip, 53]
+    }
+  end
+
+  def to_s
+    "#<#{self.class.name}: #{@servers.slice(0, 2).map{ |e| e[1] }.join ' | '}>"
+  end
+end
+# when computer goes sleep, Resolver actor dies for Errno::ENETDOWN
+# so use pool to auto recreate
+# otherwise will see Celluloid::DeadActorError
+HOME_STREAM = HomeResolver.pool
+
+class ProxyResolver < RubyDNS::Resolver
+  def initialize
+    super [[:udp, '127.0.0.1', 40]]
+  end
+
+  def to_s
+    "#<#{self.class.name}: #{@servers.map{ |e| e[1] }.join ' | '}>"
+  end
+end
+PROXY_STREAM = ProxyResolver.pool
+
+class CustomServer < RubyDNS::RuleBasedServer
+  def deliver_to_stream transaction, stream
     if DEBUG
       q = transaction.question.to_s.sub /\.$/, ''
 
       transaction.passthrough!(stream) { |response|
-        logger.info "got #{q} from #{stream_type}"
+        logger.info "got #{q} from #{stream}"
         response.answer.\
           select{ |name, ttl, res|
             (res.kind_of?(Resolv::DNS::Resource::IN::A) ||
@@ -33,45 +68,13 @@ class CustomDnsServer < RubyDNS::RuleBasedServer
       transaction.passthrough! stream
     end
   end
-
-  private
-  def home_domains_regx
-    @home_domains_regx ||= /#{File.readlines(
-                                  File.expand_path '../home_domains.txt', __FILE__
-                                ).\
-                                select{ |e| !e.strip.start_with? '#' }.\
-                                map{ |e| e.split('#').first.strip }.\
-                                map{ |e| "^(.+\.)?#{e.gsub '.', '\.'}$" }.\
-                                join '|'}/
-  end
-
-  def get_stream type
-    case type
-    when :home
-      # when computer goes sleep, Resolver actor dies for Errno::ENETDOWN
-      # so recreate when it awakes
-      # otherwise will see Celluloid::DeadActorError
-      @home_stream = nil if @home_stream && !@home_stream.alive?
-
-      @home_stream ||= RubyDNS::Resolver.new(CONF[:home_resolvers].map{ |e|
-        ip = e.split('#').first.strip
-        [:udp, ip, 53]
-      })
-    when :proxy
-      @proxy_stream = nil if @proxy_stream && !@proxy_stream.alive?
-
-      @proxy_stream ||= RubyDNS::Resolver.new [[:udp, '127.0.0.1', 40]]
-    else
-      raise 'deliver_to_stream only supports :home and :proxy'
-    end
-  end
 end
 
-RubyDNS::run_server server_class: CustomDnsServer, listen: INTERFACES do
+RubyDNS::run_server server_class: CustomServer, listen: INTERFACES do
   logger.level = ::Logger::INFO
 
-  match(home_domains_regx) { |transaction| deliver_to_stream transaction, :home }
+  match(HOME_DOMAINS_REGX) { |transaction| deliver_to_stream transaction, HOME_STREAM }
 
-  otherwise { |transaction| deliver_to_stream transaction, :proxy }
+  otherwise { |transaction| deliver_to_stream transaction, PROXY_STREAM }
 end
 
