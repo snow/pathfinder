@@ -5,7 +5,7 @@ require 'yaml'
 
 DEBUG = ARGV.select{ |arg| %w(debug -d).include? arg.downcase  }.any?
 
-# Use upstream DNS for name resolution.
+# don't rely on the yml conf file, it will be replaced by plain text file soon
 CONF = YAML.load_file File.expand_path '../conf.yml', __FILE__
 
 INTERFACES = [[:udp, '127.0.0.1', 5300], [:tcp, '127.0.0.1', 5300]]
@@ -31,9 +31,9 @@ class HomeResolver < RubyDNS::Resolver
     #super.sub />$/, "[#{@servers.map{ |e| e[1] }.join(', ')}]>"
   #end
 end
-# when computer goes sleep, Resolver actor dies for Errno::ENETDOWN
-# so use pool to auto recreate
-# otherwise will see Celluloid::DeadActorError
+# use pool to auto recreate dead actor,
+# for example, when computer goes sleep, Resolver actor dies for Errno::ENETDOWN
+# and leads to Celluloid::DeadActorError without pool
 HOME_STREAM = HomeResolver.pool
 
 class ProxyResolver < RubyDNS::Resolver
@@ -50,19 +50,17 @@ PROXY_STREAM = ProxyResolver.pool
 class CustomServer < RubyDNS::RuleBasedServer
   def deliver_to_stream transaction, stream
     if DEBUG
-      q = transaction.question.to_s.sub /\.$/, ''
-
       transaction.passthrough!(stream) { |response|
+        # response.question may diff from origin when there are CNAME
+        q = transaction.question.to_s.sub /\.$/, ''
         logger.info "got #{q} from #{stream}"
+
         response.answer.\
           select{ |name, ttl, res|
-            (res.kind_of?(Resolv::DNS::Resource::IN::A) ||
-                res.kind_of?(Resolv::DNS::Resource::IN::AAAA)) &&
-              ttl > 0
+            res.kind_of?(Resolv::DNS::Resource::IN::A) ||
+              res.kind_of?(Resolv::DNS::Resource::IN::AAAA)
           }.\
-          each { |name, ttl, res|
-            logger.info "#{q} -> #{res.address.to_s}"
-          }
+          each{ |name, ttl, res| logger.info "#{q} -> #{res.address.to_s}" }
       }
     else
       transaction.passthrough! stream
