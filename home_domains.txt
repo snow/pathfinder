@@ -98,12 +98,12 @@ cmbchina.com
 cmfu.com
 cmread.com
 cmwb.com
+cn
 cn.archive.ubuntu.com
 cn.bing.com
 cn.coremetrics.com
 cn.debian.org
 cn.msn.com
-cn
 cnak2.englishtown.com
 cnbeta.com
 cnbetacdn.com
@@ -179,6 +179,7 @@ jiayuan.com
 jiepang.com
 jing.fm
 jobbole.com
+jomodns.com
 jstv.com
 jumei.com
 kaixin001.com
