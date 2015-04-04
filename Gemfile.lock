@@ -12,6 +12,7 @@ GEM
       celluloid (~> 0.16.0)
       celluloid-io (~> 0.16.2)
       timers (~> 4.0.1)
+    slop (4.0.0)
     timers (4.0.1)
       hitimes
 
@@ -20,3 +21,4 @@ PLATFORMS
 
 DEPENDENCIES
   rubydns
+  slop (~> 4.0.0)
