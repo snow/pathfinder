@@ -1,30 +1,34 @@
 #!/usr/bin/env ruby
 
 require 'rubydns'
-require 'yaml'
+require 'slop'
+require 'celluloid/autostart'
+require 'sequel'
 
-DEBUG = ARGV.select{ |arg| %w(debug -d).include? arg.downcase  }.any?
+OPTS = Slop.parse do |o|
+  o.banner = 'Usage: ./dns_service.rb [-d] [-p PORT]'
+  o.separator ''
+  o.separator 'example:'
+  o.separator './dns_service.rb -p 5300'
+  o.separator ''
+  o.bool '-d', '--debug', 'print debug info'
+  o.integer '-p', '--port', 'listen on port, default 5300', default: 5300
+  o.on '-h', '--help', 'print help and exit' do
+    puts o
+    exit
+  end
+end
 
-# don't rely on the yml conf file, it will be replaced by plain text file soon
-CONF = YAML.load_file File.expand_path '../conf.yml', __FILE__
-
-INTERFACES = [[:udp, '127.0.0.1', 5300], [:tcp, '127.0.0.1', 5300]]
-
-HOME_DOMAINS_REGX = /#{File.readlines(
-                         File.expand_path '../home_domains.txt', __FILE__
-                       ).\
-                       select{ |e| !e.strip.start_with? '#' }.\
-                       map{ |e| e.split('#').first.strip }.\
-                       map{ |e| "^(.+\.)?#{e.gsub '.', '\.'}$" }.\
-                       join '|'}/
+INTERFACES = [[:udp, '127.0.0.1', OPTS[:port]], [:tcp, '127.0.0.1', OPTS[:port]]]
 
 # sub class to distinguish with ProxyResolver in log
 class HomeResolver < RubyDNS::Resolver
   def initialize
-    super CONF[:home_resolvers].map{ |e|
-      ip = e.split('#').first.strip
-      [:udp, ip, 53]
-    }
+    super File.readlines(File.expand_path '../home_resolvers.txt', __FILE__).\
+      map{ |ln|
+        ip = ln.split('#').first.strip
+        [:udp, ip, 53]
+      }
   end
 
   #def to_s
@@ -47,9 +51,43 @@ class ProxyResolver < RubyDNS::Resolver
 end
 PROXY_STREAM = ProxyResolver.pool
 
-class CustomServer < RubyDNS::RuleBasedServer
-  def deliver_to_stream transaction, stream
-    if DEBUG
+class CustomServer < RubyDNS::Server
+  include Celluloid::Notifications
+
+  def initialize *args, &block
+    super
+    logger.level = ::Logger::INFO
+
+    @home_domains_regx = build_home_domains_regx
+
+    subscribe 'home_domains_updated', :reload_home_domains
+  end
+
+  def process name, resource_class, transaction
+    if @home_domains_regx.match name
+      deliver_to_stream transaction, HOME_STREAM
+    else
+      deliver_to_stream transaction, PROXY_STREAM, true
+    end
+  end
+
+  private
+  def build_home_domains_regx
+    /#{File.readlines(
+         File.expand_path '../home_domains.txt', __FILE__
+       ).\
+       map{ |ln| ln.split('#').first.strip }.\
+       select{ |ln| ln.length >= 2 }.\
+       map{ |ln| "^(.+\.)?#{ln.gsub '.', '\.'}$" }.\
+       join '|'}/
+  end
+
+  def reload_home_domains topic
+    @home_domains_regx = build_home_domains_regx
+  end
+
+  def deliver_to_stream transaction, stream, publish_result = false
+    if OPTS.debug?
       transaction.passthrough!(stream) { |response|
         # response.question may diff from origin when there are CNAME
         q = transaction.question.to_s.sub /\.$/, ''
@@ -61,6 +99,8 @@ class CustomServer < RubyDNS::RuleBasedServer
               res.kind_of?(Resolv::DNS::Resource::IN::AAAA)
           }.\
           each{ |name, ttl, res| logger.info "#{q} -> #{res.address.to_s}" }
+
+        publish 'dns_result', q, response if publish_result
       }
     else
       transaction.passthrough! stream
@@ -68,11 +108,72 @@ class CustomServer < RubyDNS::RuleBasedServer
   end
 end
 
-RubyDNS::run_server server_class: CustomServer, listen: INTERFACES do
-  logger.level = ::Logger::INFO
+class ResultSubscriber
+  include Celluloid
+  include Celluloid::Notifications
+  include Celluloid::Logger
 
-  match(HOME_DOMAINS_REGX) { |transaction| deliver_to_stream transaction, HOME_STREAM }
+  DB = Sequel.connect 'sqlite://dns_results.db'
+  CN_NETS = File.readlines(File.expand_path '../cn_nets.txt', __FILE__).\
+    map{ |ln| IPAddr.new ln.strip }
 
-  otherwise { |transaction| deliver_to_stream transaction, PROXY_STREAM }
+  def initialize
+    subscribe 'dns_result', :on_result
+
+    DB.create_table? :domains do
+      primary_key :id
+      string :name, null: false, unique: true
+      string :status, null: false, default: ''
+      index [:name, :status]
+    end
+  end
+
+  def on_result topic, query, response
+    scope = DB[:domains].where(name: query)
+    if scope.where('status in ("home", "abroad")').select(1).count > 0
+      info "'#{query}' already reviewed" if OPTS.debug?
+      return
+    end
+
+    if 0 == scope.select(1).count
+      DB[:domains].insert name: query
+    end
+
+    response = HOME_STREAM.query query
+    if response.nil?
+      # can't get result from home resolvers, mark abroad later
+    else
+      a_records = response.answer.\
+        select{ |name, ttl, res| res.kind_of? Resolv::DNS::Resource::IN::A }
+
+      if a_records.any?
+        # only consider the first result is OK
+        # see http://en.wikipedia.org/wiki/Round-robin_DNS
+        ip = a_records.first[2].address.to_s
+
+        CN_NETS.each { |net|
+          if net === ip
+            # got home ip from home resolvers
+            info "mark #{query} as home" if OPTS.debug?
+            scope.update status: 'home'
+
+            # TODO: update home_domains.txt and trigger server reload
+
+            return
+          end
+        }
+
+        # home resolvers still give abroad ip, mark abroad later
+
+      else
+        # don't know what happened, mark abroad later
+      end
+    end
+
+    info "mark #{query} as abroad" if OPTS.debug?
+    scope.update status: 'abroad'
+  end
 end
+result_subscriber = ResultSubscriber.new
 
+RubyDNS::run_server server_class: CustomServer, listen: INTERFACES

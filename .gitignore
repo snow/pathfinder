@@ -34,4 +34,7 @@ build/
 .rvmrc
 
 /cn_ips.txt
+/cn_nets.txt
 /pathfinder.pac
+/delegated-apnic-latest
+*.db
