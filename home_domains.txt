@@ -130,6 +130,7 @@ dl.google.com
 docin.com
 donews.com
 dospy.com
+dou.bz
 douban.com
 douban.fm
 duapp.com
@@ -315,6 +316,7 @@ u148.net
 u17.com
 ubuntu.com
 ucjoy.com
+umeng.com
 uni-marketers.com
 unionpay.com
 unionpaysecure.com
