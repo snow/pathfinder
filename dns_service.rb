@@ -131,7 +131,7 @@ class ResultSubscriber
   def on_result topic, query, response
     scope = DB[:domains].where(name: query)
     if scope.where('status in ("home", "abroad")').select(1).count > 0
-      info "'#{query}' already reviewed" if OPTS.debug?
+      info "#{query} already reviewed" if OPTS.debug?
       return
     end
 
