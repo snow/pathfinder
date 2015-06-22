@@ -177,3 +177,24 @@ end
 result_subscriber = ResultSubscriber.new
 
 RubyDNS::run_server server_class: CustomServer, listen: INTERFACES
+
+#require 'benchmark'
+#regx = CustomServer.build_home_domains_regx
+## about 0.03 sec
+#Benchmark.bmbm do |x|
+  #x.report {
+    #100.times {
+      #regx.match 'cij.cdn.zhihu.com'
+    #}
+  #}
+#end
+
+## about 0.45 sec
+#Benchmark.bmbm do |x|
+  #x.report {
+    #100.times {
+      #ip = IPAddr.new '223.255.252.2'
+      #CN_NETS.each { |net| net === ip }
+    #}
+  #}
+#end
