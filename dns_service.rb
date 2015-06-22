@@ -12,6 +12,7 @@ OPTS = Slop.parse do |o|
   o.separator './dns_service.rb -p 5300'
   o.separator ''
   o.bool '-d', '--debug', 'print debug info'
+  o.bool '-r', '--review', 'record dns query that sent to proxy for reviewing'
   o.integer '-p', '--port', 'listen on port, default 5300', default: 5300
   o.on '-h', '--help', 'print help and exit' do
     puts o
@@ -99,11 +100,16 @@ class CustomServer < RubyDNS::Server
           }.\
           each{ |name, ttl, res| logger.info "#{q} -> #{res.address.to_s}" }
 
-        publish 'dns_result', q, response if publish_result
+        publish 'dns_result', q, response if OPTS.review? && publish_result
       }
     else
       transaction.passthrough! stream
     end
+  rescue IPAddr::InvalidAddressError => err
+    logger.error err
+    logger.info transaction.question.to_s.sub /\.$/, ''
+
+    # TODO: tell client we have a problem
   end
 end
 
@@ -148,7 +154,7 @@ class ResultSubscriber
       if a_records.any?
         # only consider the first result is OK
         # see http://en.wikipedia.org/wiki/Round-robin_DNS
-        ip = a_records.first[2].address.to_s
+        ip = IPAddr.new a_records.first[2].address.to_s
 
         CN_NETS.each { |net|
           if net === ip
