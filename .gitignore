@@ -33,8 +33,9 @@ build/
 # unless supporting rvm < 1.11.0 or doing something fancy, ignore this:
 .rvmrc
 
-/cn_ips.txt
 /cn_nets.txt
 /pathfinder.pac
 /delegated-apnic-latest
 *.db
+*.log
+/cc.firebloom.pathfinder.plist

@@ -24,6 +24,11 @@ Setup
 1. point system dns to 127.0.0.1
 1. run generate_pac.rb, then use the generated file on where you want
 
+### launchd
+1. copy cc.firebloom.pathfinder.sample.plist to cc.firebloom.pathfinder.plist
+1. change paths in plist
+1. load that plist in launchd
+
 为什么不用别的轮子
 ----------------
 **曲径**
