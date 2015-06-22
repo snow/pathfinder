@@ -48,7 +48,7 @@ class ProxyResolver < RubyDNS::Resolver
     #super.sub />$/, "[#{@servers.map{ |e| e[1] }.join(', ')}]>"
   #end
 end
-PROXY_STREAM = ProxyResolver.pool
+PROXY_STREAM = ProxyResolver.pool size: 4 * Celluloid.cores
 
 class CustomServer < RubyDNS::Server
   include Celluloid::Notifications
