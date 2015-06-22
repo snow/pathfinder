@@ -142,6 +142,7 @@ dospy.com
 dou.bz
 douban.com
 douban.fm
+doubanio.com
 duapp.com
 duba.net
 duomi.com
@@ -250,6 +251,7 @@ okbuy.com
 onedns.net
 optaim.com
 oschina.net
+p.getqujing.com
 paipai.com
 pcbeta.com
 pchome.net
@@ -316,7 +318,6 @@ tencent.com
 tenpay.com
 tgbus.com
 thawte.com
-theironislands.f.getqujing.net
 tiancity.com
 tianyaui.com
 tiexue.net
@@ -342,6 +343,7 @@ upaiyun.com
 upyun.com
 uusee.com
 uuu9.com
+v2ex.com
 vaikan.com
 vancl.com
 vcimg.com
