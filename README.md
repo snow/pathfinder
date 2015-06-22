@@ -19,6 +19,7 @@ Setup
 ------
 
 1. setup dnscrypt-proxy at port 40
+1. setup rbenv and bundler
 1. run dns_service.rb
 1. run dnsmasq and set upstream to this service
 1. point system dns to 127.0.0.1
