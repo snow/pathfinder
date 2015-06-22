@@ -25,10 +25,9 @@ INTERFACES = [[:udp, '127.0.0.1', OPTS[:port]], [:tcp, '127.0.0.1', OPTS[:port]]
 class HomeResolver < RubyDNS::Resolver
   def initialize
     super File.readlines(File.expand_path '../home_resolvers.txt', __FILE__).\
-      map{ |ln|
-        ip = ln.split('#').first.strip
-        [:udp, ip, 53]
-      }
+      map{ |ln| ln.split('#').first.strip }.\
+      select{ |ln| ln.length >= 7 }.\
+      map{ |ln| [:udp, ln, 53] }
   end
 
   #def to_s
